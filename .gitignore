@@ -1,0 +1,15 @@
+# 仮想環境
+venv/
+
+# Pythonキャッシュ
+__pycache__/
+*.py[cod]
+
+# VS Code 設定
+.vscode/
+
+# SQLite DB
+*.sqlite3
+
+# ログファイル
+*.log
