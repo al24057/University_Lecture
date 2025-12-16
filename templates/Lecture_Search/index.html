@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>入力フォーム</title>
+</head>
+<body>
+    <form method="post">
+        {% csrf_token %}
+        <p>
+            大学の講義に関する検索をする：
+            <textarea name="prompt" placeholder="プロンプトを入力"></textarea>
+        </p>
+        <button type="submit">送信</button>
+    </form>
+</body>
+</html>

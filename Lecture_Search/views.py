@@ -25,14 +25,14 @@ class IndexView(View):
     def post(self,request):
         prompt = request.POST.get("prompt")
         
-        KANJI_NUM = {"一":"1", "二":"2", "三":"3", "四":"4", "五":"5", "六":"6",}
+        if (re.search(r"(一|二|三|四|五|六)", prompt)):
+            KANJI_NUM = {"一":"1", "二":"2", "三":"3", "四":"4", "五":"5", "六":"6",}
         
-        for k,v in KANJI_NUM:
-            prompt = prompt.replace(k,v)
+            for k,v in KANJI_NUM.items():
+                prompt = prompt.replace(k,v)
         
         explict_pairs = re.findall(r"(月|火|水|木|金|土)(?:曜|曜日)?\s*(?:の)?\s*(\d+(?:\s*(?:[、,]|と|\s)\s*\d+)*)(?:時)?限", prompt)
         pairs = []
-        periods = []
         for d,p in explict_pairs:
             temp = split_period_block(p)
             for t in temp:
@@ -72,11 +72,11 @@ class IndexView(View):
                             pairs.append((d, p))
                 
         
-        for d in periods_match:
-            periods.extend(split_period_block(d))
         
-        t=MeCab.Taggar()
-        result = t.parse(prompt)
+        
+        #t=MeCab.Taggar()
+        #result = t.parse(prompt)
+        return render(request, "Lecture_Search/index.html",{"pairs":pairs})
         
     
 index = IndexView.as_view()
