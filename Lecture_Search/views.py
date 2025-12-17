@@ -2,12 +2,13 @@ from django.shortcuts import render
 from django.views import View
 import MeCab
 import re
+from dataclasses import dataclass
 # Create your views here.
 
 def split_period_block(block: str):
     result = []
 
-    block = block.replace(" ","").replace("　","").replace(",","").replace("、","").replace("と","")
+    block = block.replace(" ","").replace("　","").replace(",","").replace("、","").replace("と","").replace("-","").replace("~","").replace("ー","").replace("～","")
 
     if len(block) == 1:
         result.append(int(block))
@@ -19,27 +20,110 @@ def split_period_block(block: str):
 
     return result
 
-def connect_period_block(block: str):
-    result = []
+def connect_period_block(list):
+    i = 0
+    results = []
+    temp = list[0]
+    for i in range(list[1]-list[0]+1):
+        results.append(temp)
+        temp = temp + 1
     
-    block = block.replace("-","").replace("ー","").replace("~","").replace("～","").replace("から","")
-    
-    if len(block) == 1:
-        result.append(int(block))
+    return results
 
-    elif len(block) >= 2:
-        for d in block:
-            temp = int(d)
-            result.append(temp)
-            
-    r = result[0]
-    new_result = []
-    while(r <= result[len(result-1)]):
-        new_result.append(r)
-        r = r + 1
+@dataclass
+class Token:
+    type: str
+    value: any = None
+    
+DAY_RE = re.compile(r"(月|火|水|木|金|土)(?:曜|曜日)?")
+PERIOD_RE = re.compile(r"\d((\s*(-|~|ー|～)\s*)\d)*")
+LIMIT_RE = re.compile(r"限")
+CONJ_RE = re.compile(r"(と|、|,|\s)")
+SKIP_RE = re.compile(r"(の|は|に|で|を|も)")
+    
+def tokenize(text: str):
+    token = []
+    i = 0
+    while i < len(text):
+        chunk = text[i:]
         
-    return new_result
+        m = DAY_RE.match(chunk)
+        if m:
+            token.append(Token("DAY", m.group(1)))
+            i = i + m.end()
+            
+        m = PERIOD_RE.match(chunk)
+        if m:
+            token.append(Token("PERIOD", m.group(0)))
+            i = i + m.end()
+            
+        m = LIMIT_RE.match(chunk)
+        if m:
+            token.append(Token("LIMIT"))
+            i = i + m.end()
+            
+        m = CONJ_RE.match(chunk)
+        if m:
+            token.append(Token("AND"))
+            i = i + m.end()
+            
+        m = SKIP_RE.match(chunk)    
+        if m:
+            token.append(Token("SKIP"))
+            i = i + m.end()
+            
+        i = i + 1
+        
+    return token
 
+def parse_days_periods(prompt: str):
+    tokens = tokenize(prompt)
+    pairs = []
+    
+    current_days = []
+    pending_periods = []
+    state = "START"
+    
+    for tok in tokens:
+        if tok.type == "DAY":
+            if pending_periods:
+                pending_periods.clear()
+            if state == "EXPECTED_DAY":
+                current_days.append(tok.value)
+            else:
+                current_days.append(tok.value)
+            state = "EXPECTED_DAY"
+        
+        elif tok.type == "PERIOD":
+            if re.match(r"\d\s*(?:-|~|ー|～)\s*\d", tok.value):
+                result = connect_period_block(split_period_block(tok.value))
+                pending_periods.extend(result)
+            pending_periods.append(tok.value)
+            state = "EXPECTED_LIMIT"
+            
+        elif tok.type == "LIMIT":
+            if current_days and pending_periods:
+                for c in current_days:
+                    for p in pending_periods:
+                        pairs.append(c,int(p))
+            current_days.clear()
+            pending_periods.clear()
+            state = "START"
+                        
+        elif tok.type == "AND":
+            continue
+        
+        elif tok.type =="SKIP":
+            continue
+        
+        else:
+            current_days.clear()
+            pending_periods.clear()
+            state == "START"
+        
+    return pairs
+        
+        
 class IndexView(View):
     def get(self, request):
         return render(request, "Lecture_Search/index.html")
@@ -52,9 +136,13 @@ class IndexView(View):
             for k,v in KANJI_NUM.items():
                 prompt = prompt.replace(k,v)
                 
+        
+                
         pairs = []
         blocks = re.findall(r".*?\d(?:\s*(?:[、,]|と|\s)\s*\d)*\s*限", prompt)
         prev_days = []
+        
+        pairs.extend(parse_days_periods(prompt))
         
         for b in blocks:        
             days = re.findall(r"(月|火|水|木|金|土)(?:曜|曜日)?", b)
@@ -72,7 +160,8 @@ class IndexView(View):
             
             for d in use_days:
                 for p in results:
-                    pairs.append((d,p))
+                    if (d,p) not in pairs:
+                        pairs.append((d,p))
                 
         years_match = re.search(r"(20\d{2})(?:年|年度)?",prompt)
         if years_match:
