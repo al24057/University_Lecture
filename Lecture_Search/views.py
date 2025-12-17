@@ -19,6 +19,27 @@ def split_period_block(block: str):
 
     return result
 
+def connect_period_block(block: str):
+    result = []
+    
+    block = block.replace("-","").replace("ー","").replace("~","").replace("～","").replace("から","")
+    
+    if len(block) == 1:
+        result.append(int(block))
+
+    elif len(block) >= 2:
+        for d in block:
+            temp = int(d)
+            result.append(temp)
+            
+    r = result[0]
+    new_result = []
+    while(r <= result[len(result-1)]):
+        new_result.append(r)
+        r = r + 1
+        
+    return new_result
+
 class IndexView(View):
     def get(self, request):
         return render(request, "Lecture_Search/index.html")
@@ -30,48 +51,36 @@ class IndexView(View):
         
             for k,v in KANJI_NUM.items():
                 prompt = prompt.replace(k,v)
-        
-        explict_pairs = re.findall(r"(月|火|水|木|金|土)(?:曜|曜日)?\s*(?:の)?\s*(\d+(?:\s*(?:[、,]|と|\s)\s*\d+)*)(?:時)?限", prompt)
+                
         pairs = []
-        for d,p in explict_pairs:
-            temp = split_period_block(p)
-            for t in temp:
-                pairs.append((d,t))
-                
-        implict_pairs = re.findall(r"(月|火|水|木|金|土)(?:曜|曜日)?\s*(?:の)?\s*(\d+(?:\s*(?:[、,]|と|\s)\s*\d+)*)", prompt)
-        if not pairs:
-            for d,p in implict_pairs:
-                temp = split_period_block(p)
-                for t in temp:
-                    pairs.append((d,t))
-                    
-        days_match = re.findall(r"(月|火|水|木|金|土)(?:曜|曜日)?", prompt)
-        periods_match = re.findall(r"(\d+(?:\s*(?:[、,]|\s)\s*\d+)*)(?:時)?限", prompt)
-        if pairs and periods_match:
-            used_pairs = set(pairs)
-            last_day = pairs[-1][0]
-            for pm in periods_match:
-                for p in split_period_block(pm):
-                    if not ((last_day,p) in used_pairs):
-                        pairs.append((last_day, p))
-                        used_pairs.add((last_day, p))
-                        
-        if days_match and periods_match:
-            expected = len(set(days_match)) * len(set(p for pm in periods_match for p in split_period_block(pm)))
-
-            if len(pairs) < expected:
-                all_days = list(dict.fromkeys(days_match))
-                all_periods = []
-                for pm in periods_match:
-                    all_periods.extend(split_period_block(pm))
-                all_periods = list(dict.fromkeys(all_periods))
-
-                for d in all_days:
-                    for p in all_periods:
-                        if (d, p) not in pairs:
-                            pairs.append((d, p))
-                
+        blocks = re.findall(r".*?\d(?:\s*(?:[、,]|と|\s)\s*\d)*\s*限", prompt)
+        prev_days = []
         
+        for b in blocks:        
+            days = re.findall(r"(月|火|水|木|金|土)(?:曜|曜日)?", b)
+            periods = re.findall(r"(\d+(?:\s*(?:[、,]|と|\s)\s*\d+)*)(?:時)?限",b)
+            results = []
+            
+            for p in periods:
+                results.extend(split_period_block(p))
+                
+            if days:
+                use_days = days
+                prev_days = days
+            else:
+                use_days = prev_days
+            
+            for d in use_days:
+                for p in results:
+                    pairs.append((d,p))
+                
+        years_match = re.search(r"(20\d{2})(?:年|年度)?",prompt)
+        if years_match:
+            years = int(years_match.group(1))
+        reiwa_match = re.search(r"令和(\d+)", prompt)
+        if reiwa_match:
+            years = int(reiwa_match.group(1)) + 2018
+            
         
         
         #t=MeCab.Taggar()
