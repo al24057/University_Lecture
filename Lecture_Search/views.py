@@ -6,19 +6,8 @@ from dataclasses import dataclass
 # Create your views here.
 
 def split_period_block(block: str):
-    result = []
+    return list(map(int, re.findall(r"\d", block)))
 
-    block = block.replace(" ","").replace("　","").replace(",","").replace("、","").replace("と","").replace("-","").replace("~","").replace("ー","").replace("～","")
-
-    if len(block) == 1:
-        result.append(int(block))
-
-    elif len(block) >= 2:
-        for d in block:
-            temp = int(d)
-            result.append(temp)
-
-    return result
 
 def connect_period_block(list):
     i = 0
@@ -51,26 +40,31 @@ def tokenize(text: str):
         if m:
             token.append(Token("DAY", m.group(1)))
             i = i + m.end()
+            continue
             
         m = PERIOD_RE.match(chunk)
         if m:
             token.append(Token("PERIOD", m.group(0)))
             i = i + m.end()
+            continue
             
         m = LIMIT_RE.match(chunk)
         if m:
             token.append(Token("LIMIT"))
             i = i + m.end()
+            continue
             
         m = CONJ_RE.match(chunk)
         if m:
             token.append(Token("AND"))
             i = i + m.end()
+            continue
             
         m = SKIP_RE.match(chunk)    
         if m:
             token.append(Token("SKIP"))
             i = i + m.end()
+            continue
             
         i = i + 1
         
@@ -98,14 +92,15 @@ def parse_days_periods(prompt: str):
             if re.match(r"\d\s*(?:-|~|ー|～)\s*\d", tok.value):
                 result = connect_period_block(split_period_block(tok.value))
                 pending_periods.extend(result)
-            pending_periods.append(tok.value)
+            else:
+                pending_periods.append(int(tok.value))
             state = "EXPECTED_LIMIT"
             
         elif tok.type == "LIMIT":
             if current_days and pending_periods:
                 for c in current_days:
                     for p in pending_periods:
-                        pairs.append(c,int(p))
+                        pairs.append((c,p))
             current_days.clear()
             pending_periods.clear()
             state = "START"
@@ -162,6 +157,8 @@ class IndexView(View):
                 for p in results:
                     if (d,p) not in pairs:
                         pairs.append((d,p))
+                        
+        print(pairs)
                 
         years_match = re.search(r"(20\d{2})(?:年|年度)?",prompt)
         if years_match:
