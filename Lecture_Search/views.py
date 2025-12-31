@@ -3,12 +3,12 @@ from django.views import View
 import MeCab
 import re
 from dataclasses import dataclass
-# Create your views here.
+from .models import Lecture, Course
 
 def split_period_block(block: str):
     return list(map(int, re.findall(r"\d", block)))
 
-
+ 
 def connect_period_block(list):
     i = 0
     results = []
@@ -166,11 +166,12 @@ class IndexView(View):
         reiwa_match = re.search(r"令和(\d+)", prompt)
         if reiwa_match:
             years = int(reiwa_match.group(1)) + 2018
-            
         
-        
-        #t=MeCab.Taggar()
-        #result = t.parse(prompt)
+        t=MeCab.Tagger("-Owakati")
+        result = t.parse(prompt)
+        List = result.split()
+        print(List)
+        all_items = Lecture.objects.all()
         return render(request, "Lecture_Search/index.html",{"pairs":pairs})
         
     
