@@ -3,7 +3,8 @@ from django.views import View
 import MeCab
 import re
 from dataclasses import dataclass
-from .models import Lecture, Course
+from .models import Lecture, Course, Instructor
+from django.db.models import Q
 
 def split_period_block(block: str):
     return list(map(int, re.findall(r"\d", block)))
@@ -25,7 +26,7 @@ class Token:
     value: any = None
     
 DAY_RE = re.compile(r"(月|火|水|木|金|土)(?:曜|曜日)?")
-PERIOD_RE = re.compile(r"\d((\s*(-|~|ー|～)\s*)\d)*")
+PERIOD_RE = re.compile(r"\d((\s*(-|~|ー|～|から)\s*)\d)*")
 LIMIT_RE = re.compile(r"限")
 CONJ_RE = re.compile(r"(と|、|,|\s)")
 SKIP_RE = re.compile(r"(の|は|に|で|を|も)")
@@ -89,7 +90,7 @@ def parse_days_periods(prompt: str):
             state = "EXPECTED_DAY"
         
         elif tok.type == "PERIOD":
-            if re.match(r"\d\s*(?:-|~|ー|～)\s*\d", tok.value):
+            if re.match(r"\d\s*(?:-|~|ー|～|から)\s*\d", tok.value):
                 result = connect_period_block(split_period_block(tok.value))
                 pending_periods.extend(result)
             else:
@@ -125,27 +126,32 @@ class IndexView(View):
     def post(self,request):
         prompt = request.POST.get("prompt")
         
-        if (re.search(r"(一|二|三|四|五|六)", prompt)):
-            KANJI_NUM = {"一":"1", "二":"2", "三":"3", "四":"4", "五":"5", "六":"6",}
+        KANJI_NUM = {"一":"1", "二":"2", "三":"3", "四":"4", "五":"5", "六":"6",}
+        DAY_MAP = {"月":0, "火":1, "水":2, "木":3, "金":4, "土":5,}
         
+        if (re.search(r"(一|二|三|四|五|六)", prompt)):
             for k,v in KANJI_NUM.items():
                 prompt = prompt.replace(k,v)
                 
         
                 
         pairs = []
-        blocks = re.findall(r".*?\d(?:\s*(?:[、,]|と|\s)\s*\d)*\s*限", prompt)
+        blocks = re.findall(r".*?\d(?:\s*(?:[、,]|と|\s|-|~|ー|～|から)\s*\d)*\s*限", prompt)
         prev_days = []
         
         pairs.extend(parse_days_periods(prompt))
         
         for b in blocks:        
             days = re.findall(r"(月|火|水|木|金|土)(?:曜|曜日)?", b)
-            periods = re.findall(r"(\d+(?:\s*(?:[、,]|と|\s)\s*\d+)*)(?:時)?限",b)
+            periods = re.findall(r"(\d(?:\s*(?:[、,]|と|\s|-|~|ー|～|から)\s*\d)*)(?:時)?限",b)
             results = []
             
             for p in periods:
-                results.extend(split_period_block(p))
+                if re.match(r"\d\s*(-|~|ー|～|から)\s*\d",p):
+                    result = connect_period_block(split_period_block(p))
+                    results.extend(result)
+                else:
+                    results.extend(split_period_block(p))
                 
             if days:
                 use_days = days
@@ -157,8 +163,12 @@ class IndexView(View):
                 for p in results:
                     if (d,p) not in pairs:
                         pairs.append((d,p))
-                        
-        print(pairs)
+        
+        new_pairs = []
+        for k,v in pairs:
+            new_pairs.append((DAY_MAP[k],v))
+                
+        print(new_pairs)
                 
         years_match = re.search(r"(20\d{2})(?:年|年度)?",prompt)
         if years_match:
@@ -171,7 +181,18 @@ class IndexView(View):
         result = t.parse(prompt)
         List = result.split()
         print(List)
-        all_items = Lecture.objects.all()
+        instructor_list = []
+        for j in List:
+            instructors = Instructor.objects.filter(
+                Q(last_name = j)|
+                Q(first_name = j)|
+                Q(full_name = j)
+            )
+            instructor_list.extend(instructors)
+                    
+        all_Lecture = Lecture.objects.filter(
+            instructor__in = instructor_list
+        )
         return render(request, "Lecture_Search/index.html",{"pairs":pairs})
         
     
